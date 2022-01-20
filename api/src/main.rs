@@ -3,7 +3,6 @@ use axum::extract::Path;
 use axum::headers::{HeaderMap, HeaderValue};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::StatusCode;
-use axum::response::Html;
 use axum::routing::get;
 use axum::Router;
 use include_dir::{include_dir, Dir};
@@ -20,6 +19,12 @@ fn insert_header_from_extension(map: &mut HeaderMap, ext: &str) {
             map.insert(
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/javascript"),
+            );
+        }
+        "html" => {
+            map.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
             );
         }
         _ => {}
@@ -47,30 +52,20 @@ async fn get_static(Path(path): Path<String>) -> (StatusCode, HeaderMap, Vec<u8>
     }
 }
 
-#[instrument]
-async fn index() -> Html<String> {
-    Html(
-        DIST_DIR
-            .get_file("index.html")
-            .expect("index.html not found")
-            .contents_utf8()
-            .expect("index.html is not UTF-8 encoded")
-            .to_string(),
-    )
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let app = Router::new()
-        .route("/", get(index))
+        .route(
+            "/",
+            get(|| async { get_static(Path("index.html".into())).await }),
+        )
         .route("/:key", get(get_static));
 
     axum::Server::bind(&"0.0.0.0:3000".parse()?)
         .serve(app.into_make_service())
         .await?;
-
 
     Ok(())
 }

@@ -24,7 +24,7 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(body::boxed(body::Full::from("foo")))
+            .body(body::boxed(body::Full::from(format!("Error: {}", self))))
             .unwrap()
     }
 }

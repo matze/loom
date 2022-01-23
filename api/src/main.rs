@@ -1,5 +1,5 @@
 use axum::body;
-use axum::extract::{Extension, Path};
+use axum::extract::{Extension, Path, Json};
 use axum::headers::{HeaderMap, HeaderValue};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::StatusCode;
@@ -16,7 +16,7 @@ static DIST_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../app/dist");
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Database problem")]
+    #[error("Database problem: {0}")]
     Sql(#[from] sqlx::Error),
 }
 
@@ -77,6 +77,11 @@ async fn get_static(Path(path): Path<String>) -> (StatusCode, HeaderMap, Vec<u8>
 }
 
 #[instrument]
+async fn days(Extension(state): Extension<Arc<State>>) -> Result<Json<Vec<db::Day>>, Error> {
+    Ok(Json(state.db.days().await?))
+}
+
+#[instrument]
 async fn post_begin(Extension(state): Extension<Arc<State>>) -> Result<(), Error> {
     state.db.update_begin().await?;
     Ok(())
@@ -103,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(|| async { get_static(Path("index.html".into())).await }),
         )
         .route("/:key", get(get_static))
+        .route("/api/days", get(days))
         .route("/api/begin", post(post_begin))
         .route("/api/end", post(post_end))
         .layer(AddExtensionLayer::new(Arc::new(state)));

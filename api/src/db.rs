@@ -8,9 +8,9 @@ use std::str::FromStr;
 #[derive(FromRow, Serialize, Deserialize)]
 pub struct Day {
     id: i64,
-    pub date: chrono::NaiveDate,
-    pub begin_eat: Option<chrono::NaiveTime>,
-    pub end_eat: Option<chrono::NaiveTime>,
+    pub date: chrono::NaiveDateTime,
+    pub begin_eat: Option<chrono::NaiveDateTime>,
+    pub end_eat: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Debug)]
@@ -45,6 +45,11 @@ impl Database {
         .await?;
 
         Ok(Self { pool })
+    }
+
+    pub async fn days(&self) -> Result<Vec<Day>, Error> {
+        let result = sqlx::query_as!(Day, "SELECT * FROM days").fetch_all(&self.pool).await?;
+        Ok(result)
     }
 
     pub async fn update_begin(&self) -> Result<(), Error> {

@@ -1,2 +1,18 @@
-[workspace]
-members = ["api", "app"]
+[package]
+name = "loom"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+askama = { version = "0", features = ["with-axum"] }
+askama_axum = { version = "0" }
+axum = "0"
+axum-extra = { version = "0", features = ["typed-routing"] }
+include_dir = "0"
+mime_guess = "2"
+serde = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0", features = ["trace"] }
+tracing = "0"
+tracing-subscriber = "0"

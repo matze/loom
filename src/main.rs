@@ -1,14 +1,22 @@
 use askama::Template;
 use axum::body::{self, Empty, Full};
-use axum::extract::Path;
+use axum::extract::{Extension, Path};
 use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response, Json};
+use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use axum_extra::routing::{RouterExt, TypedPath};
 use include_dir::{include_dir, Dir};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
+use sqlx::FromRow;
+use std::str::FromStr;
+use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing::info;
+
+struct State {
+    pool: SqlitePool,
+}
 
 static STATIC_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/static");
 
@@ -44,17 +52,26 @@ async fn index(_: Index) -> HtmlTemplate {
     HtmlTemplate {}
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(FromRow, Serialize, Deserialize, Debug)]
 struct CurrentPayload {
-    point: f64,
+    weight: f64,
 }
 
 #[derive(TypedPath)]
 #[typed_path("/api/current")]
 struct CurrentPath;
 
-async fn get_current(_: CurrentPath) -> Json<CurrentPayload> {
-    Json(CurrentPayload { point: 64.1 })
+async fn get_current(
+    _: CurrentPath,
+    Extension(state): Extension<Arc<State>>,
+) -> Json<CurrentPayload> {
+    let result =
+        sqlx::query_as::<_, CurrentPayload>("SELECT weight, MAX(date) FROM weights LIMIT 1")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+
+    Json(result)
 }
 
 async fn post_current(_: CurrentPath, Json(payload): Json<CurrentPayload>) {
@@ -65,11 +82,20 @@ async fn post_current(_: CurrentPath, Json(payload): Json<CurrentPayload>) {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
+    let db_options = SqliteConnectOptions::from_str(&"state.db")?
+        .create_if_missing(true)
+        .to_owned();
+
+    let pool = SqlitePoolOptions::new().connect_with(db_options).await?;
+
+    let state = Arc::new(State { pool });
+
     let app = axum::Router::new()
         .typed_get(index)
         .typed_get(get_current)
         .typed_post(post_current)
         .route("/static/*path", get(static_path))
+        .layer(Extension(state))
         .layer(TraceLayer::new_for_http());
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3000));

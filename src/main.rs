@@ -78,6 +78,57 @@ async fn post_current(_: CurrentPath, Json(payload): Json<CurrentPayload>) {
     info!("{:?}", payload);
 }
 
+#[derive(TypedPath)]
+#[typed_path("/api/series")]
+struct SeriesPath;
+
+#[derive(FromRow, Debug)]
+struct SeriesRow {
+    date: String,
+    weight: f64,
+}
+
+#[derive(Serialize)]
+struct Series {
+    pub dates: Vec<String>,
+    pub weights: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct SeriesResponse {
+    pub raw: Series,
+    pub average: Series,
+}
+
+async fn get_series(
+    _: SeriesPath,
+    Extension(state): Extension<Arc<State>>,
+) -> Json<SeriesResponse> {
+    let (dates, weights) =
+        sqlx::query_as::<_, SeriesRow>("SELECT date, weight FROM weights ORDER BY date")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.date, row.weight))
+            .unzip();
+
+    let raw = Series { dates, weights };
+
+    let weights = raw
+        .weights
+        .windows(7)
+        .map(|w| w.iter().sum::<f64>() / 7.0)
+        .collect();
+
+    let average = Series {
+        dates: raw.dates[6..].to_vec(),
+        weights,
+    };
+
+    Json(SeriesResponse { raw, average })
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -94,6 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .typed_get(index)
         .typed_get(get_current)
         .typed_post(post_current)
+        .typed_get(get_series)
         .route("/static/*path", get(static_path))
         .layer(Extension(state))
         .layer(TraceLayer::new_for_http());

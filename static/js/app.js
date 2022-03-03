@@ -3,7 +3,7 @@ const App = {
     return {
       current: fetch("/api/current")
         .then(response => response.json())
-        .then(data => (this.current = data.point))
+        .then(data => (this.current = data.weight))
     }
   },
   methods: {
@@ -21,7 +21,7 @@ const App = {
       const options = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ point: this.current })
+        body: JSON.stringify({ weight: this.current })
       }
 
       fetch("/api/current", options)

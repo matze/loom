@@ -11,8 +11,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::FromRow;
 use std::str::FromStr;
 use std::sync::Arc;
+use time::macros::format_description;
 use tower_http::trace::TraceLayer;
-use tracing::info;
 
 struct State {
     pool: SqlitePool,
@@ -74,8 +74,18 @@ async fn get_current(
     Json(result)
 }
 
-async fn post_current(_: CurrentPath, Json(payload): Json<CurrentPayload>) {
-    info!("{:?}", payload);
+async fn post_current(
+    _: CurrentPath,
+    Extension(state): Extension<Arc<State>>,
+    Json(payload): Json<CurrentPayload>,
+) {
+    let format = format_description!("[year]-[month]-[day]");
+    let date = time::OffsetDateTime::now_utc().format(&format).unwrap();
+
+    sqlx::query("INSERT INTO weights (date, weight) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET weight=excluded.weight")
+        .bind(date)
+        .bind(payload.weight)
+        .execute(&state.pool).await.unwrap();
 }
 
 #[derive(TypedPath)]

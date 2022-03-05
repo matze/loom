@@ -8,7 +8,7 @@ use axum_extra::routing::{RouterExt, TypedPath};
 use include_dir::{include_dir, Dir};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use sqlx::FromRow;
+use sqlx::{ConnectOptions, FromRow};
 use std::str::FromStr;
 use std::sync::Arc;
 use time::macros::format_description;
@@ -145,6 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db_options = SqliteConnectOptions::from_str(&"state.db")?
         .create_if_missing(true)
+        .disable_statement_logging()
         .to_owned();
 
     let pool = SqlitePoolOptions::new().connect_with(db_options).await?;

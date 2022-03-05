@@ -18,6 +18,23 @@ struct State {
     pool: SqlitePool,
 }
 
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Time format problem: {0}")]
+    TimeError(#[from] time::error::Format),
+    #[error("Database problem: {0}")]
+    SqlError(#[from] sqlx::Error),
+}
+
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(body::boxed(body::Full::from(format!("Error: {}", self))))
+            .unwrap()
+    }
+}
+
 static STATIC_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/static");
 
 async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
@@ -64,28 +81,29 @@ struct CurrentPath;
 async fn get_current(
     _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
-) -> Json<CurrentPayload> {
+) -> Result<Json<CurrentPayload>, Error> {
     let result =
         sqlx::query_as::<_, CurrentPayload>("SELECT weight, MAX(date) FROM weights LIMIT 1")
             .fetch_one(&state.pool)
-            .await
-            .unwrap();
+            .await?;
 
-    Json(result)
+    Ok(Json(result))
 }
 
 async fn post_current(
     _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<CurrentPayload>,
-) {
+) -> Result<(), Error> {
     let format = format_description!("[year]-[month]-[day]");
-    let date = time::OffsetDateTime::now_utc().format(&format).unwrap();
+    let date = time::OffsetDateTime::now_utc().format(&format)?;
 
     sqlx::query("INSERT INTO weights (date, weight) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET weight=excluded.weight")
         .bind(date)
         .bind(payload.weight)
-        .execute(&state.pool).await.unwrap();
+        .execute(&state.pool).await?;
+
+    Ok(())
 }
 
 #[derive(TypedPath)]
@@ -113,12 +131,11 @@ struct SeriesResponse {
 async fn get_series(
     _: SeriesPath,
     Extension(state): Extension<Arc<State>>,
-) -> Json<SeriesResponse> {
+) -> Result<Json<SeriesResponse>, Error> {
     let (dates, weights) =
         sqlx::query_as::<_, SeriesRow>("SELECT date, weight FROM weights ORDER BY date")
             .fetch_all(&state.pool)
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .map(|row| (row.date, row.weight))
             .unzip();
@@ -136,7 +153,7 @@ async fn get_series(
         weights,
     };
 
-    Json(SeriesResponse { raw, average })
+    Ok(Json(SeriesResponse { raw, average }))
 }
 
 #[tokio::main]

@@ -4,6 +4,8 @@ use axum::response::{IntoResponse, Response};
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
+    #[error("Task failed to execute: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
     #[error("Time format problem: {0}")]
     TimeError(#[from] time::error::Format),
     #[error("Database problem: {0}")]

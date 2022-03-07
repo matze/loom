@@ -85,17 +85,8 @@ async fn get_series(
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
     let raw = state.db.raw_series().await?;
 
-    // TODO: Spawn this in a thread ...
-    let weights = raw
-        .weights
-        .windows(7)
-        .map(|w| w.iter().sum::<f64>() / 7.0)
-        .collect();
-
-    let average = models::Series {
-        dates: raw.dates[6..].to_vec(),
-        weights,
-    };
+    // TODO: run this in a separate thread
+    let average = models::AveragedSeries::from(&raw);
 
     Ok(Json(models::RawAndAveragedSeries { raw, average }))
 }

@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::{Current, Series};
+use crate::models::{Current, RawSeries};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::{ConnectOptions, FromRow};
 use std::str::FromStr;
@@ -43,7 +43,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn raw_series(&self) -> Result<Series, Error> {
+    pub async fn raw_series(&self) -> Result<RawSeries, Error> {
         let (dates, weights) =
             sqlx::query_as::<_, SeriesRow>("SELECT date, weight FROM weights ORDER BY date")
                 .fetch_all(&self.pool)
@@ -52,6 +52,6 @@ impl Database {
                 .map(|row| (row.date, row.weight))
                 .unzip();
 
-        Ok(Series { dates, weights })
+        Ok(RawSeries { dates, weights })
     }
 }

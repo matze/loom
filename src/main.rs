@@ -6,33 +6,18 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use axum_extra::routing::{RouterExt, TypedPath};
 use include_dir::{include_dir, Dir};
-use serde::{Deserialize, Serialize};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use sqlx::{ConnectOptions, FromRow};
-use std::str::FromStr;
 use std::sync::Arc;
 use time::macros::format_description;
 use tower_http::trace::TraceLayer;
 
+mod db;
+mod error;
+mod models;
+
+use error::Error;
+
 struct State {
-    pool: SqlitePool,
-}
-
-#[derive(thiserror::Error, Debug)]
-enum Error {
-    #[error("Time format problem: {0}")]
-    TimeError(#[from] time::error::Format),
-    #[error("Database problem: {0}")]
-    SqlError(#[from] sqlx::Error),
-}
-
-impl IntoResponse for Error {
-    fn into_response(self) -> Response {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(body::boxed(body::Full::from(format!("Error: {}", self))))
-            .unwrap()
-    }
+    db: db::Database,
 }
 
 static STATIC_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/static");
@@ -69,11 +54,6 @@ async fn index(_: Index) -> HtmlTemplate {
     HtmlTemplate {}
 }
 
-#[derive(FromRow, Serialize, Deserialize, Debug)]
-struct CurrentPayload {
-    weight: f64,
-}
-
 #[derive(TypedPath)]
 #[typed_path("/api/current")]
 struct CurrentPath;
@@ -81,93 +61,51 @@ struct CurrentPath;
 async fn get_current(
     _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
-) -> Result<Json<CurrentPayload>, Error> {
-    let result =
-        sqlx::query_as::<_, CurrentPayload>("SELECT weight, MAX(date) FROM weights LIMIT 1")
-            .fetch_one(&state.pool)
-            .await?;
-
-    Ok(Json(result))
+) -> Result<Json<models::Current>, Error> {
+    Ok(Json(state.db.current().await?))
 }
 
 async fn post_current(
     _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
-    Json(payload): Json<CurrentPayload>,
+    Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
     let format = format_description!("[year]-[month]-[day]");
     let date = time::OffsetDateTime::now_utc().format(&format)?;
-
-    sqlx::query("INSERT INTO weights (date, weight) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET weight=excluded.weight")
-        .bind(date)
-        .bind(payload.weight)
-        .execute(&state.pool).await?;
-
-    Ok(())
+    state.db.upsert(date, payload.weight).await
 }
 
 #[derive(TypedPath)]
 #[typed_path("/api/series")]
 struct SeriesPath;
 
-#[derive(FromRow, Debug)]
-struct SeriesRow {
-    date: String,
-    weight: f64,
-}
-
-#[derive(Serialize)]
-struct Series {
-    pub dates: Vec<String>,
-    pub weights: Vec<f64>,
-}
-
-#[derive(Serialize)]
-struct SeriesResponse {
-    pub raw: Series,
-    pub average: Series,
-}
-
 async fn get_series(
     _: SeriesPath,
     Extension(state): Extension<Arc<State>>,
-) -> Result<Json<SeriesResponse>, Error> {
-    let (dates, weights) =
-        sqlx::query_as::<_, SeriesRow>("SELECT date, weight FROM weights ORDER BY date")
-            .fetch_all(&state.pool)
-            .await?
-            .into_iter()
-            .map(|row| (row.date, row.weight))
-            .unzip();
+) -> Result<Json<models::RawAndAveragedSeries>, Error> {
+    let raw = state.db.raw_series().await?;
 
-    let raw = Series { dates, weights };
-
+    // TODO: Spawn this in a thread ...
     let weights = raw
         .weights
         .windows(7)
         .map(|w| w.iter().sum::<f64>() / 7.0)
         .collect();
 
-    let average = Series {
+    let average = models::Series {
         dates: raw.dates[6..].to_vec(),
         weights,
     };
 
-    Ok(Json(SeriesResponse { raw, average }))
+    Ok(Json(models::RawAndAveragedSeries { raw, average }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let db_options = SqliteConnectOptions::from_str(&"state.db")?
-        .create_if_missing(true)
-        .disable_statement_logging()
-        .to_owned();
-
-    let pool = SqlitePoolOptions::new().connect_with(db_options).await?;
-
-    let state = Arc::new(State { pool });
+    let db = db::Database::new().await?;
+    let state = Arc::new(State { db });
 
     let app = axum::Router::new()
         .typed_get(index)

@@ -85,10 +85,12 @@ async fn get_series(
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
     let raw = state.db.raw_series().await?;
 
-    // TODO: run this in a separate thread
-    let average = models::AveragedSeries::from(&raw);
+    let raw_and_averaged = tokio::task::spawn_blocking(move || {
+        let average = models::AveragedSeries::from(&raw);
+        models::RawAndAveragedSeries { raw, average }
+    }).await?;
 
-    Ok(Json(models::RawAndAveragedSeries { raw, average }))
+    Ok(Json(raw_and_averaged))
 }
 
 #[tokio::main]

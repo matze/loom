@@ -7,7 +7,6 @@ edition = "2021"
 askama = { version = "0", features = ["with-axum"] }
 askama_axum = { version = "0" }
 axum = "0"
-axum-extra = { version = "0", features = ["typed-routing"] }
 include_dir = "0"
 mime_guess = "2"
 serde = "1"

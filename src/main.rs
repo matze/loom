@@ -4,7 +4,6 @@ use axum::extract::{Extension, Path};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
-use axum_extra::routing::{RouterExt, TypedPath};
 use include_dir::{include_dir, Dir};
 use std::sync::Arc;
 use time::macros::format_description;
@@ -46,27 +45,17 @@ async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
 #[template(path = "index.html")]
 struct HtmlTemplate {}
 
-#[derive(TypedPath)]
-#[typed_path("/")]
-struct Index;
-
-async fn index(_: Index) -> HtmlTemplate {
+async fn index() -> HtmlTemplate {
     HtmlTemplate {}
 }
 
-#[derive(TypedPath)]
-#[typed_path("/api/current")]
-struct CurrentPath;
-
 async fn get_current(
-    _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::Current>, Error> {
     Ok(Json(state.db.current().await?))
 }
 
 async fn post_current(
-    _: CurrentPath,
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
@@ -75,12 +64,7 @@ async fn post_current(
     state.db.upsert(date, payload.weight).await
 }
 
-#[derive(TypedPath)]
-#[typed_path("/api/series")]
-struct SeriesPath;
-
 async fn get_series(
-    _: SeriesPath,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
     let raw = state.db.raw_series().await?;
@@ -88,7 +72,8 @@ async fn get_series(
     let raw_and_averaged = tokio::task::spawn_blocking(move || {
         let average = models::AveragedSeries::from(&raw);
         models::RawAndAveragedSeries { raw, average }
-    }).await?;
+    })
+    .await?;
 
     Ok(Json(raw_and_averaged))
 }
@@ -101,10 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(State { db });
 
     let app = axum::Router::new()
-        .typed_get(index)
-        .typed_get(get_current)
-        .typed_post(post_current)
-        .typed_get(get_series)
+        .route("/", get(index))
+        .route("/api/current", get(get_current).post(post_current))
+        .route("/api/series", get(get_series))
         .route("/static/*path", get(static_path))
         .layer(Extension(state))
         .layer(TraceLayer::new_for_http());

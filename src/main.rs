@@ -1,10 +1,7 @@
 use askama::Template;
-use axum::body::{self, Empty, Full};
-use axum::extract::{Extension, Path};
-use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Json, Response};
+use axum::extract::Extension;
+use axum::response::Json;
 use axum::routing::get;
-use include_dir::{include_dir, Dir};
 use std::sync::Arc;
 use time::macros::format_description;
 use tower_http::trace::TraceLayer;
@@ -12,33 +9,12 @@ use tower_http::trace::TraceLayer;
 mod db;
 mod error;
 mod models;
+mod serve;
 
 use error::Error;
 
 struct State {
     db: db::Database,
-}
-
-static STATIC_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/static");
-
-async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
-    let path = path.trim_start_matches('/');
-    let mime_type = mime_guess::from_path(path).first_or_text_plain();
-
-    match STATIC_DIR.get_file(path) {
-        None => Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(body::boxed(Empty::new()))
-            .unwrap(),
-        Some(file) => Response::builder()
-            .status(StatusCode::OK)
-            .header(
-                header::CONTENT_TYPE,
-                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
-            )
-            .body(body::boxed(Full::from(file.contents())))
-            .unwrap(),
-    }
 }
 
 #[derive(Template)]
@@ -89,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/", get(index))
         .route("/api/current", get(get_current).post(post_current))
         .route("/api/series", get(get_series))
-        .route("/static/*path", get(static_path))
+        .route("/static/*path", get(serve::static_data))
         .layer(Extension(state))
         .layer(TraceLayer::new_for_http());
 

@@ -16,7 +16,7 @@ struct SeriesRow {
 
 impl Database {
     pub async fn new() -> Result<Self, Error> {
-        let db_options = SqliteConnectOptions::from_str(&"state.db")?
+        let db_options = SqliteConnectOptions::from_str("state.db")?
             .create_if_missing(true)
             .disable_statement_logging()
             .to_owned();

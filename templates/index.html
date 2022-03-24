@@ -25,7 +25,11 @@
 
     <script src="static/js/app.js"></script>
       {% when None %}
-    <p>not logged in</p>
+      <form action="/login" method="POST">
+        <input type="user" name="user" id="user" placeholder="User">
+        <input type="password" name="secret" id="secret" placeholder="Password">
+        <button type="submit">Login</button>
+      </form>
     {% endmatch %}
   </body>
 </html>

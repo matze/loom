@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Extension, FromRequest, RequestParts};
+use axum::extract::{Extension, Form, FromRequest, RequestParts};
 use axum::http::Request;
 use axum::response::Json;
 use once_cell::sync::Lazy;
@@ -9,6 +9,7 @@ use std::convert::From;
 use std::sync::Arc;
 use time::macros::format_description;
 use tower_http::trace::TraceLayer;
+use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
 
 mod auth;
 mod db;
@@ -43,10 +44,28 @@ async fn index(request: Request<axum::body::Body>) -> Result<HtmlTemplate, Error
     Ok(HtmlTemplate { token })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct AuthorizePayload {
     user: String,
     secret: String,
+}
+
+async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Result<HtmlTemplate, Error> {
+    if payload.user.is_empty() || payload.secret.is_empty() {
+        return Err(Error::MissingCredentials);
+    }
+
+    if payload.user != USER.as_str() || payload.secret != SECRET.as_str() {
+        return Err(Error::WrongCredentials);
+    }
+
+    let token = tokio::task::spawn_blocking(move || {
+        Ok::<String, Error>(Token::new(&payload.user)?.into())
+    })
+    .await??;
+
+    cookies.add(Cookie::new("token", token.clone()));
+    Ok(HtmlTemplate { token: Some(token) })
 }
 
 async fn authorize(Json(payload): Json<AuthorizePayload>) -> Result<String, Error> {
@@ -107,11 +126,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = axum::Router::new()
         .route("/", get(index))
+        .route("/login", post(login))
         .route("/api/authorize", post(authorize))
         .route("/api/current", get(get_current).post(post_current))
         .route("/api/series", get(get_series))
         .route("/static/*path", get(serve::static_data))
         .layer(Extension(state))
+        .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http());
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3000));

@@ -64,7 +64,9 @@ async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Resul
     })
     .await??;
 
-    cookies.add(Cookie::new("token", token.clone()));
+    let mut cookie = Cookie::new("token", token.clone());
+    cookie.set_same_site(Some(cookie::SameSite::Strict));
+    cookies.add(cookie);
     Ok(HtmlTemplate { token: Some(token) })
 }
 

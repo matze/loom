@@ -705,6 +705,7 @@ dependencies = [
  "askama",
  "askama_axum",
  "axum",
+ "cookie",
  "include_dir",
  "jsonwebtoken",
  "mime_guess",

@@ -70,44 +70,35 @@ async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Resul
     Ok(HtmlTemplate { token: Some(token) })
 }
 
-async fn authorize(Json(payload): Json<AuthorizePayload>) -> Result<String, Error> {
-    if payload.user.is_empty() || payload.secret.is_empty() {
-        return Err(Error::MissingCredentials);
-    }
-
-    if payload.user != USER.as_str() || payload.secret != SECRET.as_str() {
-        return Err(Error::WrongCredentials);
-    }
-
-    let token = tokio::task::spawn_blocking(move || {
-        Ok::<String, Error>(Token::new(&payload.user)?.into())
-    })
-    .await??;
-
-    Ok(token)
-}
-
 async fn get_current(
-    _: Token,
+    cookies: Cookies,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::Current>, Error> {
+    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
+    auth::validate(cookie.value())?;
     Ok(Json(state.db.current().await?))
 }
 
 async fn post_current(
-    _: Token,
+    cookies: Cookies,
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
+    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
+    auth::validate(cookie.value())?;
+
     let format = format_description!("[year]-[month]-[day]");
     let date = time::OffsetDateTime::now_utc().format(&format)?;
     state.db.upsert(date, payload.weight).await
 }
 
 async fn get_series(
-    _: Token,
+    cookies: Cookies,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
+    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
+    auth::validate(cookie.value())?;
+
     let raw = state.db.raw_series().await?;
 
     let raw_and_averaged = tokio::task::spawn_blocking(move || {
@@ -129,7 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = axum::Router::new()
         .route("/", get(index))
         .route("/login", post(login))
-        .route("/api/authorize", post(authorize))
         .route("/api/current", get(get_current).post(post_current))
         .route("/api/series", get(get_series))
         .route("/static/*path", get(serve::static_data))

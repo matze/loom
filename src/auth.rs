@@ -49,6 +49,12 @@ impl Token {
     }
 }
 
+pub fn validate(token: &str) -> Result<(), Error> {
+    let _ = jwt::decode::<Claims>(token, &KEYS.decoding, &jwt::Validation::default())
+        .map_err(|_| Error::InvalidToken)?;
+    Ok(())
+}
+
 impl From<Token> for String {
     fn from(token: Token) -> Self {
         token.0

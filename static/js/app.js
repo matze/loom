@@ -80,6 +80,7 @@ fetch("/api/series")
         },
       }
 
+      window.console.log(document.cookie);
       var div = document.getElementById("plot")
       Plotly.newPlot(div, plotData, layout)
     }

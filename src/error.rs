@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("Task failed to execute: {0}")]
     TaskJoin(#[from] tokio::task::JoinError),
     #[error("Time format problem: {0}")]

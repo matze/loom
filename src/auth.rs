@@ -7,6 +7,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::convert::From;
 
+const ISS: &'static str = "foo.com";
+
 static KEYS: Lazy<Keys> = Lazy::new(|| {
     let secret = std::env::var("LOOM_JWT_SECRET").expect("LOOM_JWT_SECRET must be set");
     secret.as_bytes().into()
@@ -30,7 +32,7 @@ impl From<&[u8]> for Keys {
 struct Claims {
     exp: usize,
     iss: String,
-    user: String,
+    sub: String,
 }
 
 pub(crate) struct Token(String);
@@ -39,8 +41,8 @@ impl Token {
     pub(crate) fn new(user: &str) -> Result<Self, Error> {
         let claims = Claims {
             exp: 2000000000,
-            iss: "foobar".to_string(),
-            user: user.to_string(),
+            iss: ISS.to_string(),
+            sub: user.to_string(),
         };
 
         let token = jwt::encode(&jwt::Header::default(), &claims, &KEYS.encoding)?;
@@ -50,9 +52,14 @@ impl Token {
 }
 
 pub fn validate(token: &str) -> Result<(), Error> {
-    let _ = jwt::decode::<Claims>(token, &KEYS.decoding, &jwt::Validation::default())
+    let token = jwt::decode::<Claims>(token, &KEYS.decoding, &jwt::Validation::default())
         .map_err(|_| Error::InvalidToken)?;
-    Ok(())
+
+    if token.claims.iss != ISS {
+        Err(Error::WrongCredentials)
+    } else {
+        Ok(())
+    }
 }
 
 impl From<Token> for String {
@@ -74,9 +81,8 @@ where
                 .await
                 .map_err(|_| Error::InvalidToken)?;
 
-        let _ = jwt::decode::<Claims>(bearer.token(), &KEYS.decoding, &jwt::Validation::default())
-            .map_err(|_| Error::InvalidToken)?;
-
-        Ok(Token(bearer.token().to_string()))
+        let token = bearer.token();
+        validate(token)?;
+        Ok(Token(token.to_string()))
     }
 }

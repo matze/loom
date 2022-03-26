@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http());
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 8989));
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())

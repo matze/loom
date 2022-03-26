@@ -1,11 +1,9 @@
 use crate::error::Error;
-use axum::extract::{FromRequest, RequestParts, TypedHeader};
-use axum::headers::authorization::Bearer;
-use axum::headers::Authorization;
 use jsonwebtoken as jwt;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::convert::From;
+use std::convert::{From, TryFrom};
+use tower_cookies::Cookies;
 
 const ISS: &'static str = "foo.com";
 
@@ -35,6 +33,7 @@ struct Claims {
     sub: String,
 }
 
+#[derive(Clone)]
 pub(crate) struct Token(String);
 
 impl Token {
@@ -49,40 +48,32 @@ impl Token {
 
         Ok(Self(token))
     }
-}
 
-pub fn validate(token: &str) -> Result<(), Error> {
-    let token = jwt::decode::<Claims>(token, &KEYS.decoding, &jwt::Validation::default())
-        .map_err(|_| Error::InvalidToken)?;
-
-    if token.claims.iss != ISS {
-        Err(Error::WrongCredentials)
-    } else {
-        Ok(())
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
-impl From<Token> for String {
-    fn from(token: Token) -> Self {
-        token.0
+impl TryFrom<&str> for Token {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let token = jwt::decode::<Claims>(value, &KEYS.decoding, &jwt::Validation::default())
+            .map_err(|_| Error::InvalidToken)?;
+
+        if token.claims.iss != ISS {
+            Err(Error::WrongCredentials)
+        } else {
+            Ok(Token(value.to_string()))
+        }
     }
 }
 
-#[axum::async_trait]
-impl<B> FromRequest<B> for Token
-where
-    B: Send,
-{
-    type Rejection = Error;
+impl TryFrom<Cookies> for Token {
+    type Error = Error;
 
-    async fn from_request(parts: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let TypedHeader(Authorization(bearer)) =
-            TypedHeader::<Authorization<Bearer>>::from_request(parts)
-                .await
-                .map_err(|_| Error::InvalidToken)?;
-
-        let token = bearer.token();
-        validate(token)?;
-        Ok(Token(token.to_string()))
+    fn try_from(cookies: Cookies) -> Result<Self, Self::Error> {
+        let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
+        Token::try_from(cookie.value())
     }
 }

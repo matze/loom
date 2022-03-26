@@ -1,15 +1,14 @@
 use askama::Template;
-use axum::extract::{Extension, Form, FromRequest, RequestParts};
-use axum::http::Request;
+use axum::extract::{Extension, Form};
 use axum::response::Json;
-use once_cell::sync::Lazy;
 use axum::routing::{get, post};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::convert::From;
 use std::sync::Arc;
 use time::macros::format_description;
-use tower_http::trace::TraceLayer;
 use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
+use tower_http::trace::TraceLayer;
 
 mod auth;
 mod db;
@@ -33,13 +32,14 @@ struct State {
 #[derive(Template)]
 #[template(path = "index.html")]
 struct HtmlTemplate {
-    token: Option<String>,
+    token: Option<Token>,
 }
 
-async fn index(request: Request<axum::body::Body>) -> Result<HtmlTemplate, Error> {
-    let mut parts = RequestParts::new(request);
-    let result: Result<Token, Error> = FromRequest::from_request(&mut parts).await;
-    let token = result.ok().map(|token| token.into());
+async fn index(cookies: Cookies) -> Result<HtmlTemplate, Error> {
+    let token = cookies
+        .get("token")
+        .map(|cookie| cookie.value().try_into())
+        .transpose()?;
 
     Ok(HtmlTemplate { token })
 }
@@ -50,7 +50,10 @@ struct AuthorizePayload {
     secret: String,
 }
 
-async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Result<HtmlTemplate, Error> {
+async fn login(
+    Form(payload): Form<AuthorizePayload>,
+    cookies: Cookies,
+) -> Result<HtmlTemplate, Error> {
     if payload.user.is_empty() || payload.secret.is_empty() {
         return Err(Error::MissingCredentials);
     }
@@ -59,12 +62,10 @@ async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Resul
         return Err(Error::WrongCredentials);
     }
 
-    let token = tokio::task::spawn_blocking(move || {
-        Ok::<String, Error>(Token::new(&payload.user)?.into())
-    })
-    .await??;
+    let token = tokio::task::spawn_blocking(move || Ok::<Token, Error>(Token::new(&payload.user)?))
+        .await??;
 
-    let mut cookie = Cookie::new("token", token.clone());
+    let mut cookie = Cookie::new("token", token.as_str().to_string());
     cookie.set_same_site(Some(cookie::SameSite::Strict));
     cookies.add(cookie);
     Ok(HtmlTemplate { token: Some(token) })
@@ -74,8 +75,7 @@ async fn get_current(
     cookies: Cookies,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::Current>, Error> {
-    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
-    auth::validate(cookie.value())?;
+    let _ = Token::try_from(cookies)?;
     Ok(Json(state.db.current().await?))
 }
 
@@ -84,9 +84,7 @@ async fn post_current(
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
-    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
-    auth::validate(cookie.value())?;
-
+    let _ = Token::try_from(cookies)?;
     let format = format_description!("[year]-[month]-[day]");
     let date = time::OffsetDateTime::now_utc().format(&format)?;
     state.db.upsert(date, payload.weight).await
@@ -96,8 +94,7 @@ async fn get_series(
     cookies: Cookies,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
-    let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
-    auth::validate(cookie.value())?;
+    let _ = Token::try_from(cookies)?;
 
     let raw = state.db.raw_series().await?;
 

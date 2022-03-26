@@ -1,6 +1,6 @@
-use std::convert::From;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::convert::From;
 
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct Current {

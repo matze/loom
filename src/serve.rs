@@ -1,9 +1,8 @@
 use axum::body::{self, Empty, Full};
 use axum::extract::Path;
-use axum::response::{IntoResponse, Response};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use include_dir::{include_dir, Dir};
-
 
 static STATIC_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/static");
 

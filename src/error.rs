@@ -10,8 +10,6 @@ pub enum Error {
     TimeFormatting(#[from] time::error::Format),
     #[error("Database problem: {0}")]
     Database(#[from] sqlx::Error),
-    #[error("Missing credentials")]
-    MissingCredentials,
     #[error("Wrong credentials")]
     WrongCredentials,
     #[error("JWT creation problem: {0}")]
@@ -23,7 +21,6 @@ pub enum Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let status = match self {
-            Error::MissingCredentials => StatusCode::BAD_REQUEST,
             Error::WrongCredentials => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

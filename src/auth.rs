@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::convert::{From, TryFrom};
 use tower_cookies::Cookies;
 
-const ISS: &'static str = "foo.com";
+const ISS: &str = "foo.com";
 
 static KEYS: Lazy<Keys> = Lazy::new(|| {
     let secret = std::env::var("LOOM_JWT_SECRET").expect("LOOM_JWT_SECRET must be set");
@@ -73,7 +73,7 @@ impl TryFrom<Cookies> for Token {
     type Error = Error;
 
     fn try_from(cookies: Cookies) -> Result<Self, Self::Error> {
-        let cookie = cookies.get("token").ok_or_else(|| Error::InvalidToken)?;
+        let cookie = cookies.get("token").ok_or(Error::InvalidToken)?;
         Token::try_from(cookie.value())
     }
 }

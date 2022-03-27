@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::extract::{Extension, Form};
-use axum::response::Json;
+use axum::response::{Json, Redirect};
 use axum::routing::{get, post};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use std::sync::Arc;
 use time::macros::format_description;
 use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
 use tower_http::trace::TraceLayer;
+use tracing::error;
 
 mod auth;
 mod db;
@@ -36,10 +37,16 @@ struct HtmlTemplate {
 }
 
 async fn index(cookies: Cookies) -> Result<HtmlTemplate, Error> {
-    let token = cookies
-        .get("token")
-        .map(|cookie| cookie.value().try_into())
-        .transpose()?;
+    let token: Option<Token> = cookies.get("token").and_then(|cookie| {
+        let value: Result<Token, Error> = cookie.value().try_into();
+        match value {
+            Ok(token) => Some(token),
+            Err(err) => {
+                error!(error = ?err);
+                None
+            }
+        }
+    });
 
     Ok(HtmlTemplate { token })
 }
@@ -50,25 +57,15 @@ struct AuthorizePayload {
     secret: String,
 }
 
-async fn login(
-    Form(payload): Form<AuthorizePayload>,
-    cookies: Cookies,
-) -> Result<HtmlTemplate, Error> {
-    if payload.user.is_empty() || payload.secret.is_empty() {
-        return Err(Error::MissingCredentials);
+async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Result<Redirect, Error> {
+    if payload.user == USER.as_str() && payload.secret == SECRET.as_str() {
+        let token = tokio::task::spawn_blocking(move || Token::new(&payload.user)).await??;
+        let mut cookie = Cookie::new("token", token.as_str().to_string());
+        cookie.set_same_site(Some(cookie::SameSite::Strict));
+        cookies.add(cookie);
     }
 
-    if payload.user != USER.as_str() || payload.secret != SECRET.as_str() {
-        return Err(Error::WrongCredentials);
-    }
-
-    let token = tokio::task::spawn_blocking(move || Ok::<Token, Error>(Token::new(&payload.user)?))
-        .await??;
-
-    let mut cookie = Cookie::new("token", token.as_str().to_string());
-    cookie.set_same_site(Some(cookie::SameSite::Strict));
-    cookies.add(cookie);
-    Ok(HtmlTemplate { token: Some(token) })
+    Ok(Redirect::to("/".parse().unwrap()))
 }
 
 async fn get_current(

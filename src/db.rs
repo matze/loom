@@ -14,6 +14,11 @@ struct SeriesRow {
     weight: f64,
 }
 
+#[derive(FromRow)]
+struct PasswordHash {
+    hash: String,
+}
+
 impl Database {
     pub async fn new() -> Result<Self, Error> {
         let db_options = SqliteConnectOptions::from_str("state.db")?
@@ -24,6 +29,26 @@ impl Database {
         let pool = SqlitePoolOptions::new().connect_with(db_options).await?;
 
         Ok(Self { pool })
+    }
+
+    pub async fn insert_hash(&self, user: &str, hash: &str) -> Result<(), Error> {
+        sqlx::query("INSERT INTO password_hashes (user, hash) VALUES (?, ?)")
+            .bind(user)
+            .bind(hash)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn hash(&self, user: &str) -> Result<String, Error> {
+        Ok(
+            sqlx::query_as::<_, PasswordHash>("SELECT hash FROM password_hashes where user=?")
+                .bind(user)
+                .fetch_one(&self.pool)
+                .await?
+                .hash,
+        )
     }
 
     pub async fn current(&self) -> Result<Current, Error> {

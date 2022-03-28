@@ -4,14 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+argon2 = "0"
 askama = { version = "0", features = ["with-axum"] }
 askama_axum = { version = "0" }
 axum = { version = "0", features = ["headers"] }
+clap = { version = "3", features = ["derive"] }
 cookie = "0"
 include_dir = "0"
 jsonwebtoken = "8"
 mime_guess = "2"
 once_cell = "1"
+rand_core = { version = "0", features = ["std"] }
 serde = "1"
 serde_json = "1"
 sqlx = { version = "0.5", features = ["runtime-tokio-rustls", "sqlite", "macros"] }

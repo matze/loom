@@ -1,8 +1,10 @@
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use askama::Template;
 use axum::extract::{Extension, Form};
 use axum::response::{Json, Redirect};
 use axum::routing::{get, post};
-use once_cell::sync::Lazy;
+use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::convert::From;
 use std::sync::Arc;
@@ -20,11 +22,26 @@ mod serve;
 use auth::Token;
 use error::Error;
 
-static USER: Lazy<String> =
-    Lazy::new(|| std::env::var("LOOM_USER").expect("LOOM_USER must be set"));
+#[derive(Parser)]
+struct Opt {
+    #[clap(subcommand)]
+    command: Commands,
+}
 
-static SECRET: Lazy<String> =
-    Lazy::new(|| std::env::var("LOOM_SECRET").expect("LOOM_SECRET must be set"));
+#[derive(Subcommand)]
+enum Commands {
+    /// Hash user password and add to database
+    InsertHash {
+        #[clap(long)]
+        user: String,
+
+        #[clap(long)]
+        password: String,
+    },
+
+    /// Run the server
+    Run {},
+}
 
 struct State {
     db: db::Database,
@@ -57,8 +74,18 @@ struct AuthorizePayload {
     secret: String,
 }
 
-async fn login(Form(payload): Form<AuthorizePayload>, cookies: Cookies) -> Result<Redirect, Error> {
-    if payload.user == USER.as_str() && payload.secret == SECRET.as_str() {
+async fn login(
+    Form(payload): Form<AuthorizePayload>,
+    cookies: Cookies,
+    Extension(state): Extension<Arc<State>>,
+) -> Result<Redirect, Error> {
+    let hash = state.db.hash(&payload.user).await?;
+    let hash = PasswordHash::new(&hash).unwrap();
+
+    if argon2::Argon2::default()
+        .verify_password(payload.secret.as_bytes(), &hash)
+        .is_ok()
+    {
         let token = tokio::task::spawn_blocking(move || Token::new(&payload.user)).await??;
         let mut cookie = Cookie::new("token", token.as_str().to_string());
         cookie.set_same_site(Some(cookie::SameSite::Strict));
@@ -104,11 +131,7 @@ async fn get_series(
     Ok(Json(raw_and_averaged))
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-
-    let db = db::Database::new().await?;
+async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(State { db });
 
     let app = axum::Router::new()
@@ -128,4 +151,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     Ok(())
+}
+
+async fn insert_hash(
+    db: db::Database,
+    user: &str,
+    password: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = argon2::Argon2::default();
+    let hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
+    Ok(db.insert_hash(user, &hash).await?)
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
+
+    let opt = Opt::parse();
+    let db = db::Database::new().await?;
+
+    match &opt.command {
+        Commands::InsertHash { user, password } => insert_hash(db, user, password).await,
+        Commands::Run {} => run(db).await,
+    }
 }

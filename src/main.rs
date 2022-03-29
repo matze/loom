@@ -50,22 +50,22 @@ struct State {
 #[derive(Template)]
 #[template(path = "index.html")]
 struct HtmlTemplate {
-    token: Option<Token>,
+    logged_in: bool,
 }
 
 async fn index(cookies: Cookies) -> Result<HtmlTemplate, Error> {
-    let token: Option<Token> = cookies.get("token").and_then(|cookie| {
+    let logged_in = cookies.get("token").map_or(false, |cookie| {
         let value: Result<Token, Error> = cookie.value().try_into();
         match value {
-            Ok(token) => Some(token),
+            Ok(_) => true,
             Err(err) => {
                 error!(error = ?err);
-                None
+                false
             }
         }
     });
 
-    Ok(HtmlTemplate { token })
+    Ok(HtmlTemplate { logged_in })
 }
 
 #[derive(Deserialize, Debug)]

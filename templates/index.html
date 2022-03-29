@@ -9,8 +9,7 @@
   </head>
 
   <body>
-    {% match token %}
-      {% when Some with (val) %}
+    {% if logged_in %}
     <div class="parent" id="app">
       <div class="control">
         <div class="weight">
@@ -24,12 +23,12 @@
     <div id="plot"></div>
 
     <script src="static/js/app.js"></script>
-      {% when None %}
+    {% else %}
       <form action="/login" method="POST">
         <input type="user" name="user" id="user" placeholder="User">
         <input type="password" name="secret" id="secret" placeholder="Password">
         <button type="submit">Login</button>
       </form>
-    {% endmatch %}
+    {% endif %}
   </body>
 </html>

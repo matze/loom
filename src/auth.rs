@@ -1,6 +1,7 @@
 use crate::error::Error;
 use jsonwebtoken as jwt;
 use once_cell::sync::Lazy;
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::convert::{From, TryFrom};
 use tower_cookies::Cookies;
@@ -8,8 +9,9 @@ use tower_cookies::Cookies;
 const ISS: &str = "foo.com";
 
 static KEYS: Lazy<Keys> = Lazy::new(|| {
-    let secret = std::env::var("LOOM_JWT_SECRET").expect("LOOM_JWT_SECRET must be set");
-    secret.as_bytes().into()
+    let mut secret = [0u8; 256];
+    OsRng.fill_bytes(&mut secret);
+    secret.as_ref().into()
 });
 
 struct Keys {

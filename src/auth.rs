@@ -1,4 +1,5 @@
 use crate::error::Error;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use jsonwebtoken as jwt;
 use once_cell::sync::Lazy;
 use rand_core::{OsRng, RngCore};
@@ -78,4 +79,21 @@ impl TryFrom<Cookies> for Token {
         let cookie = cookies.get("token").ok_or(Error::InvalidToken)?;
         Token::try_from(cookie.value())
     }
+}
+
+pub fn hash_secret(secret: &str) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+
+    argon2::Argon2::default()
+        .hash_password(secret.as_bytes(), &salt)
+        .unwrap()
+        .to_string()
+}
+
+pub fn verify_secret(hash: &str, secret: &str) -> bool {
+    let hash = PasswordHash::new(&hash).unwrap();
+
+    argon2::Argon2::default()
+        .verify_password(secret.as_bytes(), &hash)
+        .is_ok()
 }

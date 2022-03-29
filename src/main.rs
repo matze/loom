@@ -1,5 +1,3 @@
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use askama::Template;
 use axum::extract::{Extension, Form};
 use axum::response::{Json, Redirect};
@@ -80,12 +78,8 @@ async fn login(
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Redirect, Error> {
     let hash = state.db.hash(&payload.user).await?;
-    let hash = PasswordHash::new(&hash).unwrap();
 
-    if argon2::Argon2::default()
-        .verify_password(payload.secret.as_bytes(), &hash)
-        .is_ok()
-    {
+    if auth::verify_secret(&hash, &payload.secret) {
         let token = tokio::task::spawn_blocking(move || Token::new(&payload.user)).await??;
         let mut cookie = Cookie::new("token", token.as_str().to_string());
         cookie.set_same_site(Some(cookie::SameSite::Strict));
@@ -158,13 +152,7 @@ async fn insert_hash(
     user: &str,
     password: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = argon2::Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .unwrap()
-        .to_string();
-
+    let hash = auth::hash_secret(password);
     Ok(db.insert_hash(user, &hash).await?)
 }
 

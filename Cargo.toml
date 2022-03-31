@@ -5,9 +5,10 @@ edition = "2021"
 
 [dependencies]
 argon2 = "0"
-askama = { version = "0", features = ["with-axum"] }
-askama_axum = { version = "0" }
+askama = { git = "https://github.com/djc/askama", features = ["with-axum"] }
+askama_axum = { git = "https://github.com/djc/askama" }
 axum = { version = "0", features = ["headers"] }
+axum-extra = { version = "0", features = ["cookie"] }
 clap = { version = "3", features = ["derive"] }
 cookie = "0"
 include_dir = "0"
@@ -22,7 +23,6 @@ thiserror = { version = "1" }
 time = { version = "0", features = ["formatting", "macros"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0", features = ["trace"] }
-tower-cookies = { version = "0" }
 tracing = "0"
 tracing-subscriber = "0"
 

@@ -21,7 +21,7 @@ pub enum Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let status = match self {
-            Error::WrongCredentials => StatusCode::UNAUTHORIZED,
+            Error::WrongCredentials | Error::InvalidToken => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

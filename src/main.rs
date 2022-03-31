@@ -2,12 +2,12 @@ use askama::Template;
 use axum::extract::{Extension, Form};
 use axum::response::{Json, Redirect};
 use axum::routing::{get, post};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::convert::From;
 use std::sync::Arc;
 use time::macros::format_description;
-use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
 use tower_http::trace::TraceLayer;
 use tracing::error;
 
@@ -51,7 +51,7 @@ struct HtmlTemplate {
     logged_in: bool,
 }
 
-async fn index(cookies: Cookies) -> Result<HtmlTemplate, Error> {
+async fn index(cookies: CookieJar) -> Result<HtmlTemplate, Error> {
     let logged_in = cookies.get("token").map_or(false, |cookie| {
         let value: Result<Token, Error> = cookie.value().try_into();
         match value {
@@ -74,7 +74,7 @@ struct AuthorizePayload {
 
 async fn login(
     Form(payload): Form<AuthorizePayload>,
-    cookies: Cookies,
+    cookies: CookieJar,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Redirect, Error> {
     let hash = state.db.hash(&payload.user).await?;
@@ -86,11 +86,11 @@ async fn login(
         cookies.add(cookie);
     }
 
-    Ok(Redirect::to("/".parse().unwrap()))
+    Ok(Redirect::to("/"))
 }
 
 async fn get_current(
-    cookies: Cookies,
+    cookies: CookieJar,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::Current>, Error> {
     let _ = Token::try_from(cookies)?;
@@ -98,7 +98,7 @@ async fn get_current(
 }
 
 async fn post_current(
-    cookies: Cookies,
+    cookies: CookieJar,
     Extension(state): Extension<Arc<State>>,
     Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
@@ -109,7 +109,7 @@ async fn post_current(
 }
 
 async fn get_series(
-    cookies: Cookies,
+    cookies: CookieJar,
     Extension(state): Extension<Arc<State>>,
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
     let _ = Token::try_from(cookies)?;
@@ -135,7 +135,6 @@ async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/series", get(get_series))
         .route("/static/*path", get(serve::static_data))
         .layer(Extension(state))
-        .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http());
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 8989));

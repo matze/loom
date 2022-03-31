@@ -1,11 +1,11 @@
 use crate::error::Error;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use axum_extra::extract::CookieJar;
 use jsonwebtoken as jwt;
 use once_cell::sync::Lazy;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::convert::{From, TryFrom};
-use tower_cookies::Cookies;
 
 const ISS: &str = "foo.com";
 
@@ -72,10 +72,10 @@ impl TryFrom<&str> for Token {
     }
 }
 
-impl TryFrom<Cookies> for Token {
+impl TryFrom<CookieJar> for Token {
     type Error = Error;
 
-    fn try_from(cookies: Cookies) -> Result<Self, Self::Error> {
+    fn try_from(cookies: CookieJar) -> Result<Self, Self::Error> {
         let cookie = cookies.get("token").ok_or(Error::InvalidToken)?;
         Token::try_from(cookie.value())
     }

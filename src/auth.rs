@@ -91,7 +91,7 @@ pub fn hash_secret(secret: &str) -> String {
 }
 
 pub fn verify_secret(hash: &str, secret: &str) -> bool {
-    let hash = PasswordHash::new(&hash).unwrap();
+    let hash = PasswordHash::new(hash).unwrap();
 
     argon2::Argon2::default()
         .verify_password(secret.as_bytes(), &hash)

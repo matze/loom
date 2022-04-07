@@ -9,7 +9,7 @@ use std::convert::From;
 use std::sync::Arc;
 use time::macros::format_description;
 use tower_http::trace::TraceLayer;
-use tracing::error;
+use tracing::{info, error};
 
 mod auth;
 mod db;
@@ -140,6 +140,8 @@ async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
         .layer(TraceLayer::new_for_http());
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 8989));
+
+    info!("listening on {addr:?}");
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())

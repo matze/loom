@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::extract::{Extension, Form};
-use axum::response::{Json, Redirect, IntoResponse};
+use axum::response::{IntoResponse, Json, Redirect};
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use clap::{Parser, Subcommand};
@@ -9,7 +9,7 @@ use std::convert::From;
 use std::sync::Arc;
 use time::macros::format_description;
 use tower_http::trace::TraceLayer;
-use tracing::{info, error};
+use tracing::{error, info};
 
 mod auth;
 mod db;
@@ -145,6 +145,11 @@ async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to listen to ctrl-c");
+        })
         .await?;
 
     Ok(())

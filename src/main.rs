@@ -77,7 +77,15 @@ async fn login(
     cookies: CookieJar,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    let hash = state.db.hash(&payload.user).await?;
+    let hash = match state.db.hash(&payload.user).await {
+        Err(err) => {
+            if matches!(err, error::Error::Database(_)) {
+                return Ok((cookies, Redirect::to("/")));
+            }
+            Err(err)
+        }
+        Ok(hash) => Ok(hash),
+    }?;
 
     let cookies = if auth::verify_secret(&hash, &payload.secret) {
         let token = tokio::task::spawn_blocking(move || Token::new(&payload.user)).await??;

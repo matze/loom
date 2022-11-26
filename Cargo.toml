@@ -7,7 +7,7 @@ edition = "2021"
 argon2 = "0"
 askama = { git = "https://github.com/djc/askama", features = ["with-axum"] }
 askama_axum = { git = "https://github.com/djc/askama" }
-axum = { version = "0", features = ["headers"] }
+axum = { version = "0.6", features = ["headers", "form"] }
 axum-extra = { version = "0", features = ["cookie"] }
 clap = { version = "3", features = ["derive"] }
 cookie = "0"

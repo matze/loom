@@ -1,7 +1,8 @@
 use askama::Template;
-use axum::extract::{Extension, Form};
+use axum::extract::State;
 use axum::response::{IntoResponse, Json, Redirect};
 use axum::routing::{get, post};
+use axum::Form;
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
@@ -41,9 +42,11 @@ enum Commands {
     Run {},
 }
 
-struct State {
+struct AppState {
     db: db::Database,
 }
+
+type SharedState = Arc<AppState>;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -66,16 +69,16 @@ async fn index(cookies: CookieJar) -> Result<HtmlTemplate, Error> {
     Ok(HtmlTemplate { logged_in })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct AuthorizePayload {
     user: String,
     secret: String,
 }
 
 async fn login(
-    Form(payload): Form<AuthorizePayload>,
     cookies: CookieJar,
-    Extension(state): Extension<Arc<State>>,
+    State(state): State<SharedState>,
+    Form(payload): Form<AuthorizePayload>,
 ) -> impl IntoResponse {
     let hash = match state.db.hash(&payload.user).await {
         Err(err) => {
@@ -101,7 +104,7 @@ async fn login(
 
 async fn get_current(
     cookies: CookieJar,
-    Extension(state): Extension<Arc<State>>,
+    State(state): State<SharedState>,
 ) -> Result<Json<models::Current>, Error> {
     let _ = Token::try_from(cookies)?;
     Ok(Json(state.db.current().await?))
@@ -109,7 +112,7 @@ async fn get_current(
 
 async fn post_current(
     cookies: CookieJar,
-    Extension(state): Extension<Arc<State>>,
+    State(state): State<SharedState>,
     Json(payload): Json<models::Current>,
 ) -> Result<(), Error> {
     let _ = Token::try_from(cookies)?;
@@ -120,7 +123,7 @@ async fn post_current(
 
 async fn get_series(
     cookies: CookieJar,
-    Extension(state): Extension<Arc<State>>,
+    State(state): State<SharedState>,
 ) -> Result<Json<models::RawAndAveragedSeries>, Error> {
     let _ = Token::try_from(cookies)?;
 
@@ -136,7 +139,7 @@ async fn get_series(
 }
 
 async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
-    let state = Arc::new(State { db });
+    let state = Arc::new(AppState { db });
 
     let app = axum::Router::new()
         .route("/", get(index))
@@ -144,8 +147,8 @@ async fn run(db: db::Database) -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/current", get(get_current).post(post_current))
         .route("/api/series", get(get_series))
         .route("/static/*path", get(serve::static_data))
-        .layer(Extension(state))
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 8989));
 
